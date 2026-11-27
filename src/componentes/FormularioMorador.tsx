@@ -1,0 +1,143 @@
+import { useState } from 'react';
+import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { DadosMorador } from '../api/cadastrarMorador';
+import { nomeDaUnidade, Unidade } from '../api/unidade';
+import { mensagemDe } from '../servicos/http';
+import { somenteDigitos } from '../utils/formatar';
+import { Botao } from './Botao';
+import { Campo } from './Campo';
+
+interface FormularioMoradorProps {
+  titulo: string;
+  unidade: Unidade;
+  inicial: DadosMorador;
+  telefoneTravado?: boolean;
+  aoSalvar: (dados: DadosMorador) => Promise<void>;
+  aoCancelar: () => void;
+}
+
+export function FormularioMorador(props: FormularioMoradorProps) {
+  const { titulo, unidade, inicial, telefoneTravado = false, aoSalvar, aoCancelar } = props;
+  const [dados, setDados] = useState<DadosMorador>(inicial);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState('');
+
+  // Um alterar para todos os campos: [campo] usa o VALOR da variável como nome.
+  function alterar(campo: keyof DadosMorador, valor: string) {
+    setDados({ ...dados, [campo]: valor });
+  }
+
+  async function salvar() {
+    const problema = validar(dados, telefoneTravado);
+    if (problema) {
+      setErro(problema);
+      return;
+    }
+    setSalvando(true);
+    setErro('');
+    try {
+      await aoSalvar(dados);
+    } catch (e) {
+      setErro(mensagemDe(e));
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Modal visible animationType="slide" onRequestClose={aoCancelar}>
+      <ScrollView
+        contentContainerStyle={styles.conteudo}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={styles.titulo}>{titulo}</Text>
+        <Campo rotulo="Unidade" value={nomeDaUnidade(unidade)} editable={false} />
+        <Campo rotulo="Nome" value={dados.nome} onChangeText={(v) => alterar('nome', v)} />
+        <Campo
+          rotulo="CPF"
+          value={dados.cpf}
+          onChangeText={(v) => alterar('cpf', v)}
+          keyboardType="number-pad"
+          placeholder="000.000.000-00"
+        />
+        <Campo
+          rotulo="E-mail"
+          value={dados.email}
+          onChangeText={(v) => alterar('email', v)}
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
+        <Campo
+          rotulo="Telefone"
+          value={dados.telefone}
+          onChangeText={(v) => alterar('telefone', v)}
+          keyboardType="phone-pad"
+          placeholder="(16) 3333-4444"
+          editable={!telefoneTravado}
+        />
+        {telefoneTravado ? (
+          <Text style={styles.aviso}>O telefone só pode ser informado no cadastro.</Text>
+        ) : null}
+        {erro ? <Text style={styles.erro}>{erro}</Text> : null}
+        <View style={styles.botoes}>
+          <View style={styles.botao}>
+            <Botao rotulo="Cancelar" variante="secundario" aoTocar={aoCancelar} />
+          </View>
+          <View style={styles.botao}>
+            <Botao rotulo="Salvar" aoTocar={salvar} carregando={salvando} />
+          </View>
+        </View>
+      </ScrollView>
+    </Modal>
+  );
+}
+
+// Devolve o primeiro problema encontrado, ou texto vazio se está tudo certo.
+function validar(dados: DadosMorador, telefoneTravado: boolean): string {
+  if (dados.nome.trim().length < 3) {
+    return 'Informe o nome completo.';
+  }
+  if (somenteDigitos(dados.cpf).length !== 11) {
+    return 'O CPF precisa ter 11 dígitos.';
+  }
+  if (dados.email && !dados.email.includes('@')) {
+    return 'E-mail inválido.';
+  }
+  const digitos = somenteDigitos(dados.telefone).length;
+  if (!telefoneTravado && digitos > 0 && (digitos < 10 || digitos > 11)) {
+    return 'Telefone com DDD: 10 ou 11 dígitos.';
+  }
+  return '';
+}
+
+const styles = StyleSheet.create({
+  conteudo: {
+    padding: 24,
+    paddingTop: 56,
+    backgroundColor: '#F1F5F9',
+    flexGrow: 1,
+  },
+  titulo: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#0F1B33',
+    marginBottom: 20,
+  },
+  aviso: {
+    color: '#64748B',
+    fontSize: 13,
+    marginTop: -8,
+    marginBottom: 14,
+  },
+  erro: {
+    color: '#DC2626',
+    marginBottom: 12,
+  },
+  botoes: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  botao: {
+    flex: 1,
+  },
+});
