@@ -2,16 +2,20 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Sessao } from './src/api/login';
+import { buscarUnidade, Unidade } from './src/api/unidade';
 import { Botao } from './src/componentes/Botao';
+import { CabecalhoUnidade } from './src/componentes/CabecalhoUnidade';
 import { apagarSessao, lerSessao, salvarSessao } from './src/servicos/armazenamento';
-import { lerClaims, tokenExpirado } from './src/servicos/jwt';
+import { mensagemDe } from './src/servicos/http';
+import { tokenExpirado } from './src/servicos/jwt';
 import { TelaLogin } from './src/telas/TelaLogin';
 
 export default function App() {
   const [sessao, setSessao] = useState<Sessao | null>(null);
+  const [unidade, setUnidade] = useState<Unidade | null>(null);
   const [verificando, setVerificando] = useState(true);
+  const [erro, setErro] = useState('');
 
-  // Roda UMA vez, quando o app abre: procura uma sessão guardada no cofre.
   useEffect(() => {
     async function restaurar() {
       const salva = await lerSessao();
@@ -28,6 +32,23 @@ export default function App() {
     restaurar();
   }, []);
 
+  // Sempre que houver uma sessão nova, busca a unidade de quem entrou.
+  useEffect(() => {
+    if (!sessao) {
+      return;
+    }
+    const atual = sessao;
+    async function carregarUnidade() {
+      setErro('');
+      try {
+        setUnidade(await buscarUnidade(atual));
+      } catch (e) {
+        setErro(mensagemDe(e));
+      }
+    }
+    carregarUnidade();
+  }, [sessao]);
+
   async function entrou(nova: Sessao) {
     await salvarSessao(JSON.stringify(nova));
     setSessao(nova);
@@ -35,6 +56,7 @@ export default function App() {
 
   async function sair() {
     await apagarSessao();
+    setUnidade(null);
     setSessao(null);
   }
 
@@ -50,14 +72,26 @@ export default function App() {
     return <TelaLogin aoEntrar={entrou} />;
   }
 
-  const expira = new Date((lerClaims(sessao.token).exp ?? 0) * 1000);
+  if (!unidade) {
+    return (
+      <View style={styles.centro}>
+        {erro ? (
+          <>
+            <Text style={styles.erro}>{erro}</Text>
+            <Botao rotulo="Sair" variante="secundario" aoTocar={sair} />
+          </>
+        ) : (
+          <ActivityIndicator size="large" color="#14A5C4" />
+        )}
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.centro}>
-      <Text style={styles.titulo}>Olá, {sessao.nome}!</Text>
-      <Text style={styles.linha}>Condomínio: {sessao.idCondominio}</Text>
-      <Text style={styles.linha}>Token válido até {expira.toLocaleString('pt-BR')}</Text>
-      <Botao rotulo="Sair" variante="secundario" aoTocar={sair} />
-      <StatusBar style="dark" />
+    <View style={styles.tela}>
+      <CabecalhoUnidade nome={sessao.nome} unidade={unidade} aoSair={sair} />
+      <Text style={styles.provisorio}>A lista de moradores chega na fase 3.</Text>
+      <StatusBar style="light" />
     </View>
   );
 }
@@ -67,17 +101,20 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     padding: 24,
-    gap: 8,
+    gap: 12,
     backgroundColor: '#F1F5F9',
   },
-  titulo: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#0F1B33',
+  tela: {
+    flex: 1,
+    backgroundColor: '#F1F5F9',
   },
-  linha: {
+  erro: {
+    color: '#DC2626',
+    textAlign: 'center',
+  },
+  provisorio: {
+    padding: 24,
     fontSize: 16,
     color: '#334155',
-    marginBottom: 8,
   },
 });
